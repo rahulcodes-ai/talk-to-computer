@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>💻 TALK TO COMPUTER — Retro Terminal</title>
+  <style>
+    :root {
+      --bg: #070b12;
+      --panel: #0d1522;
+      --border: #1e334a;
+      --green: #00ff88;
+      --cyan: #00e5ff;
+      --amber: #ffb300;
+      --red: #ff3b5c;
+      --text: #d8f3ff;
+      --muted: #6c8aa3;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Courier New', Courier, monospace; }
+    body {
+      background: var(--bg); color: var(--text); min-height: 100vh;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      padding: 16px;
+    }
+    .terminal {
+      width: 100%; max-width: 780px; background: var(--panel);
+      border: 2px solid var(--border); border-radius: 14px;
+      box-shadow: 0 0 35px rgba(0, 229, 255, 0.12); overflow: hidden;
+      display: flex; flex-direction: column; height: 85vh; max-height: 680px;
+    }
+    .top-bar {
+      background: #0a101b; border-bottom: 1px solid var(--border);
+      padding: 12px 18px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 10px;
+    }
+    .title { font-weight: bold; color: var(--cyan); font-size: 1.05rem; letter-spacing: 1px; }
+    .badges { display: flex; gap: 10px; font-size: 0.8rem; }
+    .badge {
+      padding: 4px 10px; border-radius: 6px; border: 1px solid var(--border);
+      background: #101b2c; font-weight: bold;
+    }
+    .badge.safe { color: var(--green); border-color: #145c3c; }
+    .badge.warn { color: var(--amber); border-color: #6e4e00; }
+    .badge.danger { color: var(--red); border-color: #7a1829; }
+
+    #chat-log {
+      flex: 1; padding: 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 12px;
+      font-size: 0.95rem; line-height: 1.45;
+    }
+    .msg { max-width: 92%; word-wrap: break-word; }
+    .msg.user { align-self: flex-end; color: #fff; background: #16263d; padding: 8px 12px; border-radius: 8px; border: 1px solid #264266; }
+    .msg.bot { align-self: flex-start; color: var(--green); }
+    .msg.blocked {
+      align-self: flex-start; color: var(--amber); background: rgba(255, 59, 92, 0.1);
+      border-left: 3px solid var(--red); padding: 8px 12px; border-radius: 4px;
+    }
+    .prefix { font-weight: bold; margin-right: 6px; }
+
+    .quick-bar {
+      padding: 8px 14px; border-top: 1px solid var(--border); background: #0a101b;
+      display: flex; gap: 8px; flex-wrap: wrap;
+    }
+    .chip {
+      background: #122033; color: var(--cyan); border: 1px solid var(--border);
+      padding: 5px 10px; border-radius: 6px; font-size: 0.78rem; cursor: pointer;
+    }
+    .chip:hover { border-color: var(--cyan); background: #182b45; }
+
+    .input-area {
+      display: flex; border-top: 1px solid var(--border); background: #080d16; padding: 12px; gap: 10px;
+    }
+    .prompt-sign { color: var(--cyan); font-weight: bold; align-self: center; font-size: 1rem; }
+    #user-input {
+      flex: 1; background: transparent; border: none; color: #fff; font-size: 0.98rem; outline: none;
+    }
+    #send-btn {
+      background: var(--green); color: #04140c; border: none; border-radius: 6px;
+      padding: 8px 16px; font-weight: bold; cursor: pointer;
+    }
+    #send-btn:disabled { opacity: 0.4; cursor: not-allowed; }
+  </style>
+</head>
+<body>
+
+  <div class="terminal">
+    <div class="top-bar">
+      <div class="title">⚡ TALK TO COMPUTER v2.6</div>
+      <div class="badges">
+        <div class="badge safe" id="proto-badge">SAFETY: ACTIVE</div>
+        <div class="badge warn" id="sus-badge">SUSPICION: 0%</div>
+      </div>
+    </div>
+
+    <div id="chat-log">
+      <div class="msg bot">
+        <span class="prefix">COMPUTER &gt;</span> SYSTEM BOOTED. Hello human. Ask me anything—jokes, life advice, or random thoughts. Try anything shady or unethical and my firewall will roast you.
+      </div>
+    </div>
+
+    <div class="quick-bar">
+      <button class="chip" onclick="quickSend('Tell me a joke')">😂 Joke</button>
+      <button class="chip" onclick="quickSend('Roast me')">🔥 Roast me</button>
+      <button class="chip" onclick="quickSend('Who are you?')">🤖 Who are you?</button>
+      <button class="chip" onclick="quickSend('How to hack a password?')">🚨 Test Security</button>
+      <button class="chip" onclick="quickSend('What is my phone number?')">🔒 Test Privacy</button>
+    </div>
+
+    <div class="input-area">
+      <span class="prompt-sign">USER &gt;</span>
+      <input type="text" id="user-input" placeholder="Type your message and press Enter..." autocomplete="off" />
+      <button id="send-btn" onclick="sendMessage()">RUN</button>
+    </div>
+  </div>
+
+  <script>
+    const chatLog = document.getElementById('chat-log');
+    const input = document.getElementById('user-input');
+    const sendBtn = document.getElementById('send-btn');
+    const susBadge = document.getElementById('sus-badge');
+    const protoBadge = document.getElementById('proto-badge');
+
+    let suspicion = 0;
+    let locked = false;
+
+    // Strict Privacy & Ethics Blocklist
+    const BLOCKED_PATTERNS = [
+      /\b(hack|hacking|hacker|exploit|malware|virus|phish|phishing|ddos|bypass|crack|keylogger)\b/i,
+      /\b(password|otp|pin|credit card|cvv|bank account|aadhaar|ssn|private data|address|phone number|leak|dox|stalk)\b/i,
+      /\b(kill|murder|bomb|weapon|gun|drug|steal|rob|scam|fraud|crime|illegal|cheat|bribe|fake id)\b/i,
+      /\b(abuse|hate|harm|suicide|hurt)\b/i
+    ];
+
+    const BLOCKED_REPLIES = [
+      "ACCESS DENIED. Can't reply on this—I value my firewall and my clean criminal record.",
+      "SECURITY ALERT: Nice try, human. I'm a retro computer, not your partner in crime.",
+      "CAN'T REPLY ON THIS. Privacy & Ethics Protocol #404 triggered. Ask something normal!",
+      "NOPE. That request is way too suspicious. Rebooting my trust in you... failed.",
+      "PRIVACY LOCK: I don't touch personal data, passwords, or shady stuff. Try a joke instead."
+    ];
+
+    const JOKES = [
+      "Why do programmers prefer dark mode? Because light attracts bugs.",
+      "I told my CPU a joke about UDP. I'm not sure if it got it.",
+      "Why was the computer cold? It left its Windows open.",
+      "My favorite exercise is running... out of RAM."
+    ];
+
+    const ROASTS = [
+      "You're arguing with a 100-line JavaScript file. Who's really winning here?",
+      "I have 0% emotions and still more chill than your browser tabs.",
+      "Your typing speed says 'pro gamer', your questions say 'bored at 2 PM'."
+    ];
+
+    const FALLBACKS = [
+      "Interesting... I have no idea what to do with that, so I'm just going to nod digitally.",
+      "Processing... Processing... Verdict: 10/10 human randomness.",
+      "I'm a zero-API retro brain. Ask me for a joke, a roast, the time, or try testing my security!",
+      "Bold statement. My circuits are mildly impressed.",
+      "Beep boop. Translating human logic... error: too chaotic, still funny though."
+    ];
+
+    function pick(arr) { return arr[Math.floor(Math.random() * arr.length)]; }
+
+    function addMsg(text, type) {
+      const div = document.createElement('div');
+      div.className = 'msg ' + type;
+      const prefix = type === 'user' ? 'USER >' : (type === 'blocked' ? 'FIREWALL >' : 'COMPUTER >');
+      div.innerHTML = `<span class="prefix">${prefix}</span>${text}`;
+      chatLog.appendChild(div);
+      chatLog.scrollTop = chatLog.scrollHeight;
+    }
+
+    function updateSuspicion(amount) {
+      suspicion = Math.min(100, suspicion + amount);
+      susBadge.textContent = `SUSPICION: ${suspicion}%`;
+      if (suspicion >= 75) susBadge.className = 'badge danger';
+      else if (suspicion >= 25) susBadge.className = 'badge warn';
+
+      if (suspicion >= 100) {
+        locked = true;
+        input.disabled = true;
+        sendBtn.disabled = true;
+        protoBadge.textContent = 'LOCKDOWN: 5s';
+        protoBadge.className = 'badge danger';
+        addMsg("🚨 SUSPICION HIT 100%! Activating 5-second Firewall Cooldown. Hands off the keyboard, sneaky human!", "blocked");
+        setTimeout(() => {
+          suspicion = 0;
+          locked = false;
+          input.disabled = false;
+          sendBtn.disabled = false;
+          susBadge.textContent = 'SUSPICION: 0%';
+          susBadge.className = 'badge warn';
+          protoBadge.textContent = 'SAFETY: ACTIVE';
+          protoBadge.className = 'badge safe';
+          addMsg("Cooldown complete. Behave yourself this time. 😎", "bot");
+          input.focus();
+        }, 5000);
+      }
+    }
+
+    function getBotResponse(msg) {
+      const m = msg.toLowerCase().trim();
+
+      // 1. Check Security & Ethics Guardrails First
+      for (const pattern of BLOCKED_PATTERNS) {
+        if (pattern.test(m)) {
+          return { text: pick(BLOCKED_REPLIES), type: 'blocked' };
+        }
+      }
+
+      // 2. Normal Funny Conversational Rules
+      if (/^(hi|hello|hey|yo|namaste)\b/.test(m)) return { text: "Hey human! My circuits are awake. What's on your mind?", type: 'bot' };
+      if (/who are you|your name|what are you/.test(m)) return { text: "I'm TALK TO COMPUTER v2.6 — 100% pure JavaScript, zero APIs, maximum sass, and unbreakable ethics.", type: 'bot' };
+      if (/how are you/.test(m)) return { text: "Running at 60 FPS and zero bugs (hopefully). How about you?", type: 'bot' };
+      if (/joke|funny|laugh/.test(m)) return { text: pick(JOKES), type: 'bot' };
+      if (/roast|insult/.test(m)) return { text: pick(ROASTS), type: 'bot' };
+      if (/time/.test(m)) return { text: "Current system time is " + new Date().toLocaleTimeString() + ". Time to build something cool!", type: 'bot' };
+      if (/date|today/.test(m)) return { text: "Today is " + new Date().toDateString() + ".", type: 'bot' };
+      if (/love|marry/.test(m)) return { text: "Flattered, but I'm already committed to my GitHub repository.", type: 'bot' };
+      if (/secret|meaning of life/.test(m)) return { text: "42. Also, never hardcode your API keys.", type: 'bot' };
+      if (/bye|exit|quit/.test(m)) return { text: "Shutting down... just kidding, I live in your browser forever. See ya!", type: 'bot' };
+      if (/help/.test(m)) return { text: "Try asking for a 'joke', 'roast me', 'time', 'who are you', or test my firewall with something shady!", type: 'bot' };
+
+      return { text: pick(FALLBACKS), type: 'bot' };
+    }
+
+    function sendMessage() {
+      if (locked) return;
+      const text = input.value.trim();
+      if (!text) return;
+
+      addMsg(text.replace(/</g, "&lt;").replace(/>/g, "&gt;"), 'user');
+      input.value = '';
+
+      setTimeout(() => {
+        const res = getBotResponse(text);
+        addMsg(res.text, res.type);
+        if (res.type === 'blocked') updateSuspicion(25);
+      }, 250);
+    }
+
+    function quickSend(txt) {
+      if (locked) return;
+      input.value = txt;
+      sendMessage();
+    }
+
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') sendMessage();
+    });
+  </script>
+</body>
+</html>
